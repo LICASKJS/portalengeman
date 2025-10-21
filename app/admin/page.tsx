@@ -24,7 +24,7 @@ import type { JSX } from "react/jsx-runtime"
 
 {/* URL temporária de hospedagem do back-end*/}
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 const STORAGE_TOKEN_KEY = "admin_portal_token"
 const STORAGE_EMAIL_KEY = "admin_portal_email"
 

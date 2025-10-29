@@ -262,8 +262,8 @@ export default function ProcedimentoPage() {
             </div>
             <div className={`w-px h-10 ${isDarkMode ? "bg-slate-700" : "bg-slate-300"}`}></div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-orange-400 mb-1">100%</div>
-              <div className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>Pontualidade</div>
+              <div className="text-2xl font-bold text-orange-400 mb-1">48h</div>
+              <div className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>Tempo médio de Resposta</div>
             </div>
           </div>
         </div>
@@ -285,7 +285,7 @@ export default function ProcedimentoPage() {
               <div className="w-15 h-15 bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center text-xl font-bold text-white mb-4 shadow-lg shadow-orange-400/25">
                 1
               </div>
-              <h4 className="text-xl font-semibold mb-2">PG.SM.01 - Aquisição</h4>
+              <h4 className="text-xl font-semibold mb-2">Aquisição</h4>
               <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
                 Fluxo completo de compra, cotação, análise crítica e aprovação de materiais e serviços
               </p>
@@ -295,7 +295,7 @@ export default function ProcedimentoPage() {
               <div className="w-15 h-15 bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center text-xl font-bold text-white mb-4 shadow-lg shadow-orange-400/25">
                 2
               </div>
-              <h4 className="text-xl font-semibold mb-2">PG.SM.02 - Avaliação</h4>
+              <h4 className="text-xl font-semibold mb-2">Avaliação</h4>
               <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
                 Critérios de desempenho (IQF), RACs e processo de homologação de fornecedores
               </p>
@@ -305,7 +305,7 @@ export default function ProcedimentoPage() {
               <div className="w-15 h-15 bg-gradient-to-r from-orange-400 to-red-500 rounded-full flex items-center justify-center text-xl font-bold text-white mb-4 shadow-lg shadow-orange-400/25">
                 3
               </div>
-              <h4 className="text-xl font-semibold mb-2">PG.SM.03 - Almoxarifado</h4>
+              <h4 className="text-xl font-semibold mb-2">Almoxarifado</h4>
               <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
                 Inspeções rigorosas, controle de qualidade e tratamento de não conformidades
               </p>
@@ -484,6 +484,8 @@ export default function ProcedimentoPage() {
             </ul>
           </div>
         </div>
+
+        {/* Seleção do tópico */}
 
         {selectedTopic && (
           <div

@@ -24,7 +24,7 @@ import type { JSX } from "react/jsx-runtime"
 
 {/* URL temporária de hospedagem do back-end*/}
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 const STORAGE_TOKEN_KEY = "admin_portal_token"
 const STORAGE_EMAIL_KEY = "admin_portal_email"
 
@@ -1335,7 +1335,7 @@ export default function AdminDashboardPage() {
                 <div className="overflow-x-auto">
                   <div className="md:min-w-[960px]">
                     <div
-                      className={`hidden md:grid grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-6 px-6 py-4 text-xs font-medium uppercase tracking-widest border-b ${
+                      className={`hidden md:grid grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-8 px-8 py-5 text-xs font-medium uppercase tracking-widest border-b ${
                         isDarkMode
                           ? "text-slate-400 border-slate-700 bg-slate-800/80"
                           : "text-slate-500 border-slate-200 bg-slate-50/80"
@@ -1376,7 +1376,7 @@ export default function AdminDashboardPage() {
                       return (
                         <div
                           key={fornecedor.id}
-                          className={`flex flex-col md:grid md:grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-4 md:gap-6 px-6 py-5 transition-colors ${
+                          className={`flex flex-col md:grid md:grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-5 md:gap-8 px-8 py-6 transition-colors ${
                             isDarkMode ? "hover:bg-slate-800/80" : "hover:bg-slate-50/80"
                           }`}
                         >
@@ -1438,18 +1438,18 @@ export default function AdminDashboardPage() {
 
                           {/* Documentações registradas na tabela*/}
 
-                          <div className="flex flex-wrap gap-2 text-xs md:pr-4">
+                          <div className="flex flex-wrap gap-3 text-xs md:pr-4">
                             {documentosVisiveis.map((doc) => (
                               <button
                                 key={doc.id}
                                 type="button"
                                 onClick={() => handleDownloadDocumento(doc)}
                                 disabled={downloadDocumentoId === doc.id}
-                                className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${
+                                className={`inline-flex h-10 w-44 items-center gap-2 rounded-full border px-3 text-left transition-colors ${
                                   isDarkMode
                                     ? "border-slate-700 bg-slate-800/60 hover:border-orange-400/40"
                                     : "border-slate-300 bg-slate-100/60 hover:border-orange-400/60"
-                                } ${downloadDocumentoId === doc.id ? "opacity-70 cursor-wait" : ""} max-w-[12rem]`}
+                                } ${downloadDocumentoId === doc.id ? "opacity-70 cursor-wait" : ""}`}
                                 title={doc.nome}
                               >
                                 {downloadDocumentoId === doc.id ? (
@@ -1457,7 +1457,7 @@ export default function AdminDashboardPage() {
                                 ) : (
                                   <FileText className={`w-3 h-3 ${getAccentColor()}`} />
                                 )}
-                                <span className="w-full truncate">{shortenDocumentName(doc.nome)}</span>
+                                <span className="flex-1 truncate text-left">{shortenDocumentName(doc.nome)}</span>
                               </button>
                             ))}
                             {documentosRestantes > 0 && (

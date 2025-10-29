@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Mail, Lock, Shield, CheckCircle, ArrowRight, Sun, Moon } from "lucide-react"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 
 export default function SenhaPage() {
   const [email, setEmail] = useState("")

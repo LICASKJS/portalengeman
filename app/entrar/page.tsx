@@ -8,7 +8,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Eye, EyeOff, Mail, Lock, Shield, Users, TrendingUp, ArrowRight, CheckCircle, Sun, Moon, AlertCircle } from "lucide-react"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://backend-engeman-1.onrender.com'
 const ADMIN_ALLOWED_EMAILS = ['pedro.vilaca@engeman.net', 'sofia.beltrao@engeman.net', 'lucas.mateus@engeman.net']
 
 export default function LoginPage() {

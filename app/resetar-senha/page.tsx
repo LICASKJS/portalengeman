@@ -6,7 +6,6 @@ import Link from "next/link"
 import { Lock, Eye, EyeOff, CheckCircle, ArrowRight, Sun, Moon, Shield } from "lucide-react"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
-
 export default function NewPassword() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")

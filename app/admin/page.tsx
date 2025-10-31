@@ -24,7 +24,7 @@ import type { JSX } from "react/jsx-runtime"
 
 {/* URL temporária de hospedagem do back-end*/}
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 const STORAGE_TOKEN_KEY = "admin_portal_token"
 const STORAGE_EMAIL_KEY = "admin_portal_email"
 
@@ -65,6 +65,10 @@ type FornecedorAdmin = {
   total_documentos: number
   ultima_atividade: string | null
   data_cadastro: string | null
+}
+
+type NotasFornecedorEdicao = {
+  notaHomologacao?: string
 }
 
 {/* Notificação em tempo real */}
@@ -256,9 +260,16 @@ export default function AdminDashboardPage() {
   const [busca, setBusca] = useState("")
   const [filtroStatus, setFiltroStatus] = useState<StatusFiltro>("TODOS")
   const [filtroAberto, setFiltroAberto] = useState(false)
+  const [notificacoesAbertas, setNotificacoesAbertas] = useState(false)
+  const [mostrarIndicadorNotificacoes, setMostrarIndicadorNotificacoes] = useState(false)
   const filtroRef = useRef<HTMLDivElement | null>(null)
+  const notificacoesRef = useRef<HTMLDivElement | null>(null)
+  const notificacoesCountRef = useRef(0)
   const [processandoDecisaoId, setProcessandoDecisaoId] = useState<number | null>(null)
   const [downloadDocumentoId, setDownloadDocumentoId] = useState<number | null>(null)
+  const [notasEdicao, setNotasEdicao] = useState<Record<number, NotasFornecedorEdicao>>({})
+  const [salvandoNotaId, setSalvandoNotaId] = useState<number | null>(null)
+  const [notaHomologacaoEditandoId, setNotaHomologacaoEditandoId] = useState<number | null>(null)
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [adminEmail, setAdminEmail] = useState<string | null>(null)
@@ -338,6 +349,30 @@ export default function AdminDashboardPage() {
   }, [filtroAberto])
 
   useEffect(() => {
+    if (!notificacoesAbertas) return
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificacoesRef.current && !notificacoesRef.current.contains(event.target as Node)) {
+        setNotificacoesAbertas(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [notificacoesAbertas])
+
+  useEffect(() => {
+    const quantidade = notificacoes.length
+    if (quantidade === 0) {
+      notificacoesCountRef.current = 0
+      setMostrarIndicadorNotificacoes(false)
+      return
+    }
+    if (quantidade > notificacoesCountRef.current && !notificacoesAbertas) {
+      setMostrarIndicadorNotificacoes(true)
+    }
+    notificacoesCountRef.current = quantidade
+  }, [notificacoes.length, notificacoesAbertas])
+
+  useEffect(() => {
     if (!mensagemSucesso) return
     const timer = window.setTimeout(() => setMensagemSucesso(null), 4000)
     return () => window.clearTimeout(timer)
@@ -394,6 +429,9 @@ export default function AdminDashboardPage() {
       setDashboard(null)
       setFornecedores([])
       setNotificacoes([])
+      setNotificacoesAbertas(false)
+      setMostrarIndicadorNotificacoes(false)
+      notificacoesCountRef.current = 0
     }
   }, [token])
 
@@ -560,6 +598,100 @@ export default function AdminDashboardPage() {
     }
   }
 
+  {/* Edita nota de homologação do fornecedor */}
+
+  const handleEditarNotaHomologacao = (fornecedor: FornecedorAdmin) => {
+    const valorAtual =
+      fornecedor.nota_homologacao !== null && fornecedor.nota_homologacao !== undefined
+        ? String(fornecedor.nota_homologacao).replace(".", ",")
+        : ""
+    setNotasEdicao((prev) => ({
+      ...prev,
+      [fornecedor.id]: {
+        ...prev[fornecedor.id],
+        notaHomologacao: prev[fornecedor.id]?.notaHomologacao ?? valorAtual,
+      },
+    }))
+    setNotaHomologacaoEditandoId(fornecedor.id)
+  }
+
+    {/* Função que permite editar a nota de homologação */}
+  const handleAlterarNotaHomologacao = (fornecedorId: number, valor: string) => {
+    setNotasEdicao((prev) => ({
+      ...prev,
+      [fornecedorId]: {
+        ...prev[fornecedorId],
+        notaHomologacao: valor,
+      },
+    }))
+  }
+
+  {/* Função que cancela a nota nova/anterior */}
+
+  const handleCancelarNotaHomologacao = (fornecedorId: number) => {
+    setNotasEdicao((prev) => {
+      if (!(fornecedorId in prev)) return prev
+      const { [fornecedorId]: _, ...rest } = prev
+      return rest
+    })
+    setNotaHomologacaoEditandoId((current) => (current === fornecedorId ? null : current))
+  }
+
+  {/* Função que cancela a nota nova ou anterior de Homologação */}
+
+  const handleSalvarNotaHomologacao = async (fornecedor: FornecedorAdmin) => {
+    const valor = notasEdicao[fornecedor.id]?.notaHomologacao ?? ""
+    const notaNormalizada = normalizeNota(valor)
+    if (notaNormalizada === null) {
+      setErro("Informe uma nota de homologação válida.")
+      return
+    }
+
+    try {
+      setSalvandoNotaId(fornecedor.id)
+      setErro(null)
+      const resposta = await authorizedFetch(`/api/admin/fornecedores/${fornecedor.id}/notas`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ notaHomologacao: notaNormalizada }),
+      })
+      const dados = await resposta.json()
+      if (!resposta.ok) {
+        throw new Error(dados?.message ?? "Erro ao salvar a nota de homologação.")
+      }
+
+      if (dados?.fornecedor) {
+        const adaptados = adaptFornecedores([dados.fornecedor])
+        if (adaptados.length > 0) {
+          const atualizado = adaptados[0]
+          setFornecedores((prev) =>
+            prev.map((item) => (item.id === fornecedor.id ? { ...item, ...atualizado } : item)),
+          )
+        }
+      } else {
+        setFornecedores((prev) =>
+          prev.map((item) =>
+            item.id === fornecedor.id ? { ...item, nota_homologacao: notaNormalizada } : item,
+          ),
+        )
+      }
+
+      setMensagemSucesso("Nota de homologação atualizada com sucesso.")
+      setNotasEdicao((prev) => {
+        const { [fornecedor.id]: _, ...rest } = prev
+        return rest
+      })
+      setNotaHomologacaoEditandoId(null)
+    } catch (error) {
+      console.error(error)
+      setErro(error instanceof Error ? error.message : "Erro ao salvar a nota de homologação.")
+    } finally {
+      setSalvandoNotaId(null)
+    }
+  }
+
   useEffect(() => {
     if (!token) return
     const carregarDashboard = async () => {
@@ -575,6 +707,8 @@ export default function AdminDashboardPage() {
         setCarregandoDashboard(false)
       }
     }
+
+    {/* Função que engloba as notificações */}
 
     const carregarNotificacoes = async () => {
       try {
@@ -1162,7 +1296,7 @@ export default function AdminDashboardPage() {
 
       {/* Sessão principal */}
 
-      <main className="relative z-10 pt-24 pb-16">
+      <main className="relative z-10 pt-24 pb-16 min-h-screen">
         <div className="max-w-7xl mx-auto px-8">
           <div className="mb-12">
             
@@ -1207,19 +1341,19 @@ export default function AdminDashboardPage() {
               <span>{erro}</span>
             </div>
           )}
-            {/* Tabela com os dados dos fornecedores e documentações */} 
+          {/* Tabela com os dados dos fornecedores e documentacoes */}
 
-          <div className="flex flex-col xl:flex-row gap-8 mt-12">
-            <section className="flex-1">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+          <div className="mt-12 space-y-6">
+            <section className="flex flex-col space-y-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div>
                   <h3 className="text-2xl font-bold mb-2">Fornecedores</h3>
                   <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
                     Pesquise por nome fantasia ou CNPJ para visualizar status e documentos atualizados.
                   </p>
                 </div>
-                <div className="flex items-center gap-3 w-full lg:w-auto">
-                  <div className="relative flex-1 lg:w-72">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 w-full lg:w-auto">
+                  <div className="relative flex-1 sm:min-w-[14rem] lg:w-72">
                     <Search
                       className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
                         isDarkMode ? "text-slate-400" : "text-slate-500"
@@ -1237,105 +1371,194 @@ export default function AdminDashboardPage() {
                     />
                     {busca && (
                       <button
+                        type="button"
                         onClick={() => setBusca("")}
                         className={`absolute right-3 top-1/2 -translate-y-1/2 ${
                           isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900"
                         }`}
+                        aria-label="Limpar busca"
                       >
-                        ✕
+                        X
                       </button>
                     )}
                   </div>
-
-                  {/* Botão de filtragem com fornecedores aprovados, reprovados ou a cadastrar*/}
-
-                  <div ref={filtroRef} className="relative w-full lg:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => setFiltroAberto((prev) => !prev)}
-                      className={`flex items-center justify-between gap-2 w-full lg:w-auto border rounded-xl px-4 py-2 text-sm transition-all duration-300 ${
-                        isDarkMode
-                          ? "bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600"
-                          : "bg-slate-50 border-slate-300 text-slate-600 hover:border-slate-400"
-                      } ${filtroAberto ? "ring-2 ring-orange-400/40" : ""}`}
-                      aria-expanded={filtroAberto}
-                      aria-haspopup="true"
-                    >
-                      <Filter className="w-4 h-4" />
-                      <span>{filtroSelecionado?.rotulo ?? "Filtro"}</span>
-                      {filtroStatus !== "TODOS" && (
-                        <span
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            isDarkMode ? "bg-slate-700 text-slate-200" : "bg-slate-200 text-slate-600"
+                  <div className="flex items-center gap-3 sm:justify-end w-full sm:w-auto">
+                    <div ref={filtroRef} className="relative w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setFiltroAberto((prev) => !prev)}
+                        className={`flex items-center justify-between gap-2 w-full sm:w-auto border rounded-xl px-4 py-2 text-sm transition-all duration-300 ${
+                          isDarkMode
+                            ? "bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600"
+                            : "bg-slate-50 border-slate-300 text-slate-600 hover:border-slate-400"
+                        } ${filtroAberto ? "ring-2 ring-orange-400/40" : ""}`}
+                        aria-expanded={filtroAberto}
+                        aria-haspopup="true"
+                      >
+                        <Filter className="w-4 h-4" />
+                        <span>{filtroSelecionado?.rotulo ?? "Filtro"}</span>
+                        {filtroStatus !== "TODOS" && (
+                          <span
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              isDarkMode ? "bg-slate-700 text-slate-200" : "bg-slate-200 text-slate-600"
+                            }`}
+                          >
+                            {fornecedoresFiltrados.length}
+                          </span>
+                        )}
+                      </button>
+                      {filtroAberto && (
+                        <div
+                          className={`absolute right-0 mt-2 w-64 rounded-2xl border shadow-xl z-30 ${
+                            isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"
                           }`}
                         >
-                          {fornecedoresFiltrados.length}
-                        </span>
-                      )}
-                    </button>
-                    {filtroAberto && (
-                      <div
-                        className={`absolute right-0 mt-2 w-64 rounded-2xl border shadow-xl z-30 ${
-                          isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"
-                        }`}
-                      >
-                        <div className="p-2 space-y-1">
-                          {opcoesFiltro.map((opcao) => {
-                            const selecionado = opcao.valor === filtroStatus
-                            return (
-                              <button
-                                key={opcao.valor}
-                                type="button"
-                                onClick={() => handleSelecionarFiltroStatus(opcao.valor)}
-                                className={`w-full rounded-xl px-4 py-3 text-left flex items-center justify-between gap-3 transition-colors duration-200 ${
-                                  selecionado
-                                    ? isDarkMode
-                                      ? "bg-slate-800 border border-orange-400/40 text-orange-200"
-                                      : "bg-orange-50 border border-orange-400/40 text-orange-700"
-                                    : isDarkMode
-                                      ? "text-slate-200 hover:bg-slate-800/70"
-                                      : "text-slate-600 hover:bg-slate-100"
-                                }`}
-                              >
-                                <div>
-                                  <p className="font-semibold">{opcao.rotulo}</p>
-                                  <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                                    {opcao.descricao}
-                                  </p>
-                                </div>
-                                <span
-                                  className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                          <div className="p-2 space-y-1">
+                            {opcoesFiltro.map((opcao) => {
+                              const selecionado = opcao.valor === filtroStatus
+                              return (
+                                <button
+                                  key={opcao.valor}
+                                  type="button"
+                                  onClick={() => handleSelecionarFiltroStatus(opcao.valor)}
+                                  className={`w-full rounded-xl px-4 py-3 text-left flex items-center justify-between gap-3 transition-colors duration-200 ${
                                     selecionado
                                       ? isDarkMode
-                                        ? "bg-orange-500/30 text-orange-200"
-                                        : "bg-orange-100 text-orange-600"
+                                        ? "bg-slate-800 border border-orange-400/40 text-orange-200"
+                                        : "bg-orange-50 border border-orange-400/40 text-orange-700"
                                       : isDarkMode
-                                        ? "bg-slate-800 text-slate-300"
-                                        : "bg-slate-200 text-slate-600"
+                                        ? "text-slate-200 hover:bg-slate-800/70"
+                                        : "text-slate-600 hover:bg-slate-100"
                                   }`}
                                 >
-                                  {opcao.contagem}
-                                </span>
-                              </button>
-                            )
-                          })}
+                                  <div>
+                                    <p className="font-semibold">{opcao.rotulo}</p>
+                                    <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                      {opcao.descricao}
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                                      selecionado
+                                        ? isDarkMode
+                                          ? "bg-orange-500/30 text-orange-200"
+                                          : "bg-orange-100 text-orange-600"
+                                        : isDarkMode
+                                          ? "bg-slate-800 text-slate-300"
+                                          : "bg-slate-200 text-slate-600"
+                                    }`}
+                                  >
+                                    {opcao.contagem}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <div ref={notificacoesRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNotificacoesAbertas((prev) => {
+                            const seguinte = !prev
+                            if (seguinte) {
+                              setMostrarIndicadorNotificacoes(false)
+                            }
+                            return seguinte
+                          })
+                        }
+                        className={`relative flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-300 ${
+                          isDarkMode
+                            ? "border-slate-700 bg-slate-800/70 text-slate-200 hover:border-orange-400/40 hover:text-orange-200"
+                            : "border-slate-300 bg-white text-slate-600 hover:border-orange-400/60 hover:text-orange-600"
+                        } ${notificacoesAbertas ? "ring-2 ring-orange-400/40" : ""}`}
+                        aria-expanded={notificacoesAbertas}
+                        aria-haspopup="true"
+                        title="Notificacoes"
+                      >
+                        <Bell className="w-5 h-5" />
+                        {mostrarIndicadorNotificacoes && (
+                          <span
+                            className={`absolute -top-1 -right-1 h-3 w-3 rounded-full border-2 ${
+                              isDarkMode ? "border-slate-900 bg-orange-400" : "border-white bg-orange-500"
+                            }`}
+                          />
+                        )}
+                      </button>
+                      {notificacoesAbertas && (
+                        <div
+                          className={`absolute right-0 mt-3 w-80 max-h-[26rem] rounded-2xl border shadow-2xl backdrop-blur p-6 z-40 ${
+                            isDarkMode ? "bg-slate-800/80 border-slate-700" : "bg-white/80 border-slate-200"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              <Bell className={`w-4 h-4 ${getAccentColor()}`} />
+                              Notificacoes
+                            </h3>
+                            {carregandoNotificacoes && (
+                              <Loader2 className={`w-4 h-4 animate-spin ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} />
+                            )}
+                          </div>
+                          <div className="space-y-4 max-h-[18rem] overflow-y-auto pr-1">
+                            {notificacoes.length === 0 ? (
+                              <p className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                Nenhuma notificacao recente.
+                              </p>
+                            ) : (
+                              notificacoes.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className={`rounded-2xl border p-4 flex flex-col gap-2 transition-all duration-300 ${
+                                    isDarkMode
+                                      ? "border-slate-700/50 bg-slate-900/60 hover:bg-slate-900/80"
+                                      : "border-slate-200/50 bg-slate-50/60 hover:bg-slate-50/80"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span
+                                      className={`text-xs uppercase tracking-widest ${
+                                        isDarkMode ? "text-slate-400" : "text-slate-500"
+                                      }`}
+                                    >
+                                      {item.tipo === "cadastro" ? "Cadastro" : "Documento"}
+                                    </span>
+                                    <span className={`text-xs ${isDarkMode ? "text-slate-500" : "text-slate-400"}`}>
+                                      {formatRelativeTime(item.timestamp)}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm font-medium">{item.titulo}</p>
+                                  <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                                    {item.descricao}
+                                  </p>
+                                  {item.detalhes && (
+                                    <div className={`text-[11px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                      {Object.entries(item.detalhes).map(([chave, valor]) => (
+                                        <div key={`${item.id}-${chave}`}>- {chave}: {valor}</div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-              
-              {/* Tabela de fornecedores */}
               <div
                 className={`rounded-3xl border backdrop-blur shadow-2xl overflow-hidden transition-all duration-300 ${
                   isDarkMode ? "bg-slate-800/60 border-slate-700" : "bg-white/60 border-slate-200"
                 }`}
               >
                 <div className="overflow-x-auto">
-                  <div className="md:min-w-[960px]">
+                  <div className="md:min-w-[880px]">
                     <div
-                      className={`hidden md:grid grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-8 px-8 py-5 text-xs font-medium uppercase tracking-widest border-b ${
+                    className={`hidden md:grid grid-cols-[18rem_minmax(9rem,_0.85fr)_minmax(14rem,_1.05fr)_minmax(18rem,_1.1fr)_minmax(13rem,_0.9fr)] gap-5 px-6 py-4 text-xs font-medium uppercase tracking-widest border-b ${
                         isDarkMode
                           ? "text-slate-400 border-slate-700 bg-slate-800/80"
                           : "text-slate-500 border-slate-200 bg-slate-50/80"
@@ -1345,294 +1568,295 @@ export default function AdminDashboardPage() {
                       <span>Status</span>
                       <span>Notas</span>
                       <span>Documentos</span>
-                      <span>Ações</span>
+                      <span>Acoes</span>
                     </div>
-
                     <div className={`divide-y ${isDarkMode ? "divide-slate-700/40" : "divide-slate-200/40"}`}>
-                  {carregandoFornecedores ? (
-                    <div
-                      className={`flex items-center justify-center py-16 gap-3 ${
-                        isDarkMode ? "text-slate-400" : "text-slate-500"
-                      }`}
-                    >
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Carregando fornecedores...
-                    </div>
-                  ) : fornecedoresFiltrados.length === 0 ? (
-                    <div
-                      className={`flex flex-col items-center justify-center py-16 gap-2 ${
-                        isDarkMode ? "text-slate-400" : "text-slate-500"
-                      }`}
-                    >
-                      <ShieldCheck className="w-8 h-8 opacity-50" />
-                      <p className="text-sm">Nenhum fornecedor encontrado. Ajuste a busca ou os filtros.</p>
-                    </div>
-                  ) : (
-                    fornecedoresFiltrados.map((fornecedor) => {
-                      const status = statusConfig(fornecedor.status, isDarkMode)
-                      const documentosVisiveis = fornecedor.documentos.slice(0, 3)
-                      const documentosRestantes = fornecedor.total_documentos - documentosVisiveis.length
-
-                      return (
+                      {carregandoFornecedores ? (
                         <div
-                          key={fornecedor.id}
-                          className={`flex flex-col md:grid md:grid-cols-[24rem_repeat(4,_minmax(0,_1fr))] gap-5 md:gap-8 px-8 py-6 transition-colors ${
-                            isDarkMode ? "hover:bg-slate-800/80" : "hover:bg-slate-50/80"
+                          className={`flex items-center justify-center py-16 gap-3 ${
+                            isDarkMode ? "text-slate-400" : "text-slate-500"
                           }`}
                         >
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={`rounded-xl p-2 ${
-                                  isDarkMode
-                                    ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-orange-300"
-                                    : "bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/20 text-orange-600"
-                                }`}
-                              >
-                                <Users className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <p className="font-semibold leading-tight">{fornecedor.nome}</p>
-                                <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                                  CNPJ {fornecedor.cnpj}
-                                </p>
-                                {fornecedor.categoria && (
-                                  <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                                    Categoria: {fornecedor.categoria}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Carregando fornecedores...
+                        </div>
+                      ) : fornecedoresFiltrados.length === 0 ? (
+                        <div
+                          className={`flex flex-col items-center justify-center py-16 gap-2 ${
+                            isDarkMode ? "text-slate-400" : "text-slate-500"
+                          }`}
+                        >
+                          <ShieldCheck className="w-8 h-8 opacity-50" />
+                          <p className="text-sm">Nenhum fornecedor encontrado. Ajuste a busca ou os filtros.</p>
+                        </div>
+                      ) : (
+                        fornecedoresFiltrados.map((fornecedor) => {
+                          const status = statusConfig(fornecedor.status, isDarkMode)
+                          const documentosVisiveis = fornecedor.documentos.slice(0, 3)
+                          const documentosRestantes = fornecedor.total_documentos - documentosVisiveis.length
+                          const notaHomologacaoEmEdicao = notaHomologacaoEditandoId === fornecedor.id
+                          const notaHomologacaoInput = notasEdicao[fornecedor.id]?.notaHomologacao ?? ""
+                          const homologacaoFormatada = formatNota(fornecedor.nota_homologacao)
+
+                          return (
                             <div
-                              className={`flex items-center gap-2 text-xs ${
-                                isDarkMode ? "text-slate-400" : "text-slate-500"
+                              key={fornecedor.id}
+                              className={`flex flex-col md:grid md:grid-cols-[18rem_minmax(9rem,_0.85fr)_minmax(14rem,_1.05fr)_minmax(18rem,_1.1fr)_minmax(13rem,_0.9fr)] gap-5 md:gap-6 px-6 py-5 transition-colors ${
+                                isDarkMode ? "hover:bg-slate-800/80" : "hover:bg-slate-50/80"
                               }`}
                             >
-                              <AlertCircle className="w-3 h-3" />
-                              {fornecedor.email}
-                            </div>
-                          </div>
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`rounded-xl p-2 ${
+                                      isDarkMode
+                                        ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 text-orange-300"
+                                        : "bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/20 text-orange-600"
+                                    }`}
+                                  >
+                                    <Users className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold leading-tight">{fornecedor.nome}</p>
+                                    <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                      CNPJ {fornecedor.cnpj}
+                                    </p>
+                                    {fornecedor.categoria && (
+                                      <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                        Categoria: {fornecedor.categoria}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div
+                                  className={`flex items-center gap-2 text-xs ${
+                                    isDarkMode ? "text-slate-400" : "text-slate-500"
+                                  }`}
+                                >
+                                  <AlertCircle className="w-3 h-3" />
+                                  {fornecedor.email}
+                                </div>
+                              </div>
 
-                          <div className="flex flex-col gap-2">
-                            <span
-                              className={`inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-center border leading-tight ${status.bg} ${status.border} ${status.color}`}
-                            >
-                              {status.icon}
-                              {status.label}
-                            </span>
-                            <span className={`text-[11px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                              Desde {formatDateTime(fornecedor.data_cadastro)}
-                            </span>
-                          </div>
+                              <div className="flex flex-col gap-2">
+                                <span
+                                  className={`inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-center border leading-tight ${status.bg} ${status.border} ${status.color}`}
+                                >
+                                  {status.icon}
+                                  {status.label}
+                                </span>
+                                <span className={`text-[11px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                  Desde {formatDateTime(fornecedor.data_cadastro)}
+                                </span>
+                              </div>
 
-                          <div className="flex flex-col gap-1 text-sm">
-                            <div className="flex items-center gap-2">
-                              <TrendingUp className={`w-4 h-4 ${getAccentColor()}`} />
-                              <span>IQF {formatNota(fornecedor.nota_iqf)}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className={`w-4 h-4 ${getAccentColor()}`} />
-                              <span>Homologação {formatNota(fornecedor.nota_homologacao)}</span>
-                            </div>
-                          </div>
-
-                          {/* Documentações registradas na tabela*/}
-
-                          <div className="flex flex-wrap gap-3 text-xs md:pr-4">
-                            {documentosVisiveis.map((doc) => (
-                              <button
-                                key={doc.id}
-                                type="button"
-                                onClick={() => handleDownloadDocumento(doc)}
-                                disabled={downloadDocumentoId === doc.id}
-                                className={`inline-flex h-10 w-44 items-center gap-2 rounded-full border px-3 text-left transition-colors ${
+                              <div
+                                className={`flex flex-col gap-3 text-sm md:min-w-[14rem] md:max-w-[20rem] rounded-2xl border p-4 shadow-sm transition-colors ${
                                   isDarkMode
-                                    ? "border-slate-700 bg-slate-800/60 hover:border-orange-400/40"
-                                    : "border-slate-300 bg-slate-100/60 hover:border-orange-400/60"
-                                } ${downloadDocumentoId === doc.id ? "opacity-70 cursor-wait" : ""}`}
-                                title={doc.nome}
-                              >
-                                {downloadDocumentoId === doc.id ? (
-                                  <Loader2 className={`w-3 h-3 animate-spin ${getAccentColor()}`} />
-                                ) : (
-                                  <FileText className={`w-3 h-3 ${getAccentColor()}`} />
-                                )}
-                                <span className="flex-1 truncate text-left">{shortenDocumentName(doc.nome)}</span>
-                              </button>
-                            ))}
-                            {documentosRestantes > 0 && (
-                              <span
-                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${
-                                  isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-200 text-slate-600"
+                                    ? "border-slate-700/60 bg-slate-900/40"
+                                    : "border-slate-200 bg-white/70"
                                 }`}
                               >
-                                +{documentosRestantes} outros
-                              </span>
-                            )}
-                          </div>
+                                <div className="flex items-center gap-2">
+                                  <TrendingUp className={`w-4 h-4 ${getAccentColor()}`} />
+                                  <span className="font-semibold">IQF {formatNota(fornecedor.nota_iqf)}</span>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <ShieldCheck className={`w-4 h-4 ${getAccentColor()}`} />
+                                      <span className="font-semibold">Homologacao {homologacaoFormatada}</span>
+                                    </div>
+                                    {!notaHomologacaoEmEdicao && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditarNotaHomologacao(fornecedor)}
+                                        className={`text-xs font-semibold rounded-full px-3 py-1 border transition-colors ${
+                                          isDarkMode
+                                            ? "border-slate-700 text-slate-200 hover:border-orange-400/40 hover:text-orange-200"
+                                            : "border-slate-300 text-slate-600 hover:border-orange-400/60 hover:text-orange-600"
+                                        }`}
+                                      >
+                                        Editar
+                                      </button>
+                                    )}
+                                  </div>
+                                  {notaHomologacaoEmEdicao && (
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        value={notaHomologacaoInput}
+                                        onChange={(event) =>
+                                          handleAlterarNotaHomologacao(fornecedor.id, event.target.value)
+                                        }
+                                        disabled={salvandoNotaId === fornecedor.id}
+                                        className={`w-full sm:w-32 rounded-xl border px-3 py-2 text-sm font-semibold transition-all focus:outline-none focus:ring-2 ${
+                                          isDarkMode
+                                            ? "border-slate-600/70 bg-slate-900/60 text-slate-100 focus:border-orange-400 focus:ring-orange-400/40"
+                                            : "border-slate-200 bg-white text-slate-800 focus:border-orange-500 focus:ring-orange-500/30"
+                                        }`}
+                                        placeholder="Ex: 95,5"
+                                      />
+                                      <div className="flex flex-wrap gap-3 sm:flex-nowrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSalvarNotaHomologacao(fornecedor)}
+                                          disabled={salvandoNotaId === fornecedor.id}
+                                          className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
+                                            isDarkMode
+                                              ? "bg-orange-500/20 border border-orange-400/40 text-orange-100 hover:bg-orange-500/30"
+                                              : "bg-orange-500 text-white hover:bg-orange-600"
+                                          } ${salvandoNotaId === fornecedor.id ? "cursor-wait opacity-70" : ""}`}
+                                        >
+                                          {salvandoNotaId === fornecedor.id ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          ) : (
+                                            "Salvar"
+                                          )}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCancelarNotaHomologacao(fornecedor.id)}
+                                          disabled={salvandoNotaId === fornecedor.id}
+                                          className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
+                                            isDarkMode
+                                              ? "border border-slate-700 text-slate-200 hover:border-slate-600 hover:text-white"
+                                              : "border border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-900"
+                                          } ${salvandoNotaId === fornecedor.id ? "cursor-not-allowed opacity-70" : ""}`}
+                                        >
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                <span className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                                  Ultima atividade {formatDateTime(fornecedor.ultima_atividade)}
+                                </span>
+                              </div>
 
-                          
-                            {/* Botão que aprova e reprova o fornecedor */}
+                              <div
+                                className={`flex flex-col gap-3 md:min-w-[15rem] md:max-w-[22rem] rounded-2xl border p-4 shadow-sm transition-colors ${
+                                  isDarkMode
+                                    ? "border-slate-700/60 bg-slate-900/40"
+                                    : "border-slate-200 bg-white/70"
+                                }`}
+                              >
+                                <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pr-1">
+                                  {documentosVisiveis.map((doc) => (
+                                    <button
+                                      key={doc.id}
+                                      type="button"
+                                      onClick={() => handleDownloadDocumento(doc)}
+                                      disabled={downloadDocumentoId === doc.id}
+                                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs transition-colors ${
+                                        isDarkMode
+                                          ? "border-slate-700 bg-slate-800/60 hover:border-orange-400/40"
+                                          : "border-slate-300 bg-slate-100/60 hover:border-orange-400/60"
+                                      } ${downloadDocumentoId === doc.id ? "opacity-70 cursor-wait" : ""}`}
+                                      title={doc.nome}
+                                    >
+                                      {downloadDocumentoId === doc.id ? (
+                                        <Loader2 className={`w-3 h-3 animate-spin ${getAccentColor()}`} />
+                                      ) : (
+                                        <FileText className={`w-3 h-3 ${getAccentColor()}`} />
+                                      )}
+                                      <span className="truncate">{shortenDocumentName(doc.nome)}</span>
+                                    </button>
+                                  ))}
+                                  {documentosRestantes > 0 && (
+                                    <span
+                                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${
+                                        isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-200 text-slate-600"
+                                      }`}
+                                    >
+                                      +{documentosRestantes} outros
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
 
-                          <div className="flex flex-wrap gap-2 md:justify-start">
-                            <button
-                              type="button"
-                              onClick={() => handleRegistrarDecisao(fornecedor, "APROVADO")}
-                              disabled={processandoDecisaoId === fornecedor.id}
-                              className={`inline-flex min-w-[8.5rem] items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                                isDarkMode
-                                  ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 hover:border-emerald-400"
-                                  : "bg-emerald-50 border border-emerald-200 text-emerald-600 hover:border-emerald-300"
-                              } ${processandoDecisaoId === fornecedor.id ? "opacity-70 cursor-wait" : ""}`}
-                            >
-                              {processandoDecisaoId === fornecedor.id ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Processando
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Aprovar
-                                </>
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRegistrarDecisao(fornecedor, "REPROVADO")}
-                              disabled={processandoDecisaoId === fornecedor.id}
-                              className={`inline-flex min-w-[8.5rem] items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                                isDarkMode
-                                  ? "bg-red-500/15 border border-red-500/30 text-red-200 hover:border-red-400"
-                                  : "bg-red-50 border border-red-200 text-red-600 hover:border-red-300"
-                              } ${processandoDecisaoId === fornecedor.id ? "opacity-70 cursor-wait" : ""}`}
-                            >
-                              {processandoDecisaoId === fornecedor.id ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  Processando
-                                </>
-                              ) : (
-                                <>
-                                  <XCircle className="w-3 h-3" />
-                                  Reprovar
-                                </>
-                              )}
-                            </button>
-                          </div>
-
-                        </div>
-                      )
-                    })
-                  )}
+                              <div
+                                className={`flex flex-col gap-2 md:min-w-[13rem] rounded-2xl border p-4 shadow-sm transition-colors ${
+                                  isDarkMode
+                                    ? "border-slate-700/60 bg-slate-900/40"
+                                    : "border-slate-200 bg-white/70"
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegistrarDecisao(fornecedor, "APROVADO")}
+                                  disabled={processandoDecisaoId === fornecedor.id}
+                                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                                    isDarkMode
+                                      ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 hover:border-emerald-400"
+                                      : "bg-emerald-50 border border-emerald-200 text-emerald-600 hover:border-emerald-300"
+                                  } ${processandoDecisaoId === fornecedor.id ? "opacity-70 cursor-wait" : ""}`}
+                                >
+                                  {processandoDecisaoId === fornecedor.id ? (
+                                    <><Loader2 className="w-3 h-3 animate-spin" /> Processando</>
+                                  ) : (
+                                    <><CheckCircle2 className="w-3 h-3" /> Aprovar</>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegistrarDecisao(fornecedor, "REPROVADO")}
+                                  disabled={processandoDecisaoId === fornecedor.id}
+                                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                                    isDarkMode
+                                      ? "bg-red-500/15 border border-red-500/30 text-red-200 hover:border-red-400"
+                                      : "bg-red-50 border border-red-200 text-red-600 hover:border-red-300"
+                                  } ${processandoDecisaoId === fornecedor.id ? "opacity-70 cursor-wait" : ""}`}
+                                >
+                                  {processandoDecisaoId === fornecedor.id ? (
+                                    <><Loader2 className="w-3 h-3 animate-spin" /> Processando</>
+                                  ) : (
+                                    <><XCircle className="w-3 h-3" /> Reprovar</>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
             </section>
 
-                  {/* Mostra as notificações em tempo real do portal */}
-
-            <aside className="xl:w-80 flex-shrink-0 space-y-6">
-              <div
-                className={`rounded-3xl border backdrop-blur p-6 shadow-2xl transition-all duration-300 ${
-                  isDarkMode ? "bg-slate-800/70 border-slate-700" : "bg-white/70 border-slate-200"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Bell className={`w-4 h-4 ${getAccentColor()}`} />
-                    Notificações
-                  </h3>
-                  {carregandoNotificacoes && (
-                    <Loader2 className={`w-4 h-4 animate-spin ${isDarkMode ? "text-slate-400" : "text-slate-500"}`} />
-                  )}
-                </div>
-
-                <div className="space-y-4 max-h-[28rem] overflow-y-auto pr-2">
-                  {notificacoes.length === 0 ? (
-                    <p className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                      Nenhuma notificação recente.
-                    </p>
-                  ) : (
-                    notificacoes.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`rounded-2xl border p-4 flex flex-col gap-2 transition-all duration-300 ${
-                          isDarkMode
-                            ? "border-slate-700/50 bg-slate-900/60 hover:bg-slate-900/80"
-                            : "border-slate-200/50 bg-slate-50/60 hover:bg-slate-50/80"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span
-                            className={`text-xs uppercase tracking-widest ${
-                              isDarkMode ? "text-slate-400" : "text-slate-500"
-                            }`}
-                          >
-                            {item.tipo === "cadastro" ? "Cadastro" : "Documento"}
-                          </span>
-                          <span className={`text-xs ${isDarkMode ? "text-slate-500" : "text-slate-400"}`}>
-                            {formatRelativeTime(item.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium">{item.titulo}</p>
-                        <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                          {item.descricao}
-                        </p>
-                        {item.detalhes && (
-                          <div className={`text-[11px] ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
-                            {Object.entries(item.detalhes).map(([chave, valor]) => (
-                              <div key={`${item.id}-${chave}`}>
-                                • {chave}: {valor}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/*Card para gerar PDF mensal */}
-
-              <div
-                className={`rounded-3xl border p-6 transition-all duration-300 ${
+            <div
+              className={`rounded-3xl border p-6 transition-all duration-300 ${
+                isDarkMode
+                  ? "border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-transparent"
+                  : "border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-red-500/10 to-transparent"
+              }`}
+            >
+              <h3 className="text-lg font-semibold mb-2">Dica Rapida</h3>
+              <p className={`text-sm mb-4 ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                Mantenha o painel aberto enquanto realiza homologacoes. As metricas sao atualizadas em tempo real conforme os documentos chegam.
+              </p>
+              <button
+                onClick={handleGenerateMonthlyReport}
+                disabled={gerandoRelatorio || carregandoFornecedores || fornecedores.length === 0}
+                className={`flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:-translate-y-0 ${
                   isDarkMode
-                    ? "border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-transparent"
-                    : "border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-red-500/10 to-transparent"
+                    ? "bg-gradient-to-r from-orange-400 to-red-500 shadow-orange-500/20 hover:shadow-orange-500/30"
+                    : "bg-gradient-to-r from-orange-400 to-red-500 shadow-orange-500/20 hover:shadow-orange-500/30"
                 }`}
               >
-                <h3 className="text-lg font-semibold mb-2">Dica Rápida</h3>
-                <p className={`text-sm mb-4 ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                  Mantenha o painel aberto enquanto realiza homologações. As métricas são atualizadas em tempo real
-                  conforme os documentos chegam.
-                </p>
-                <button
-                  onClick={handleGenerateMonthlyReport}
-                  disabled={gerandoRelatorio || carregandoFornecedores || fornecedores.length === 0}
-                  className={`flex items-center gap-2 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:-translate-y-0 ${
-                    isDarkMode
-                      ? "bg-gradient-to-r from-orange-400 to-red-500 shadow-orange-500/20 hover:shadow-orange-500/30"
-                      : "bg-gradient-to-r from-orange-400 to-red-500 shadow-orange-500/20 hover:shadow-orange-500/30"
-                  }`}
-                >
-                  {gerandoRelatorio ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Gerando PDF...
-                    </>
-                  ) : (
-                    <>
-                      Gerar relatório (PDF)
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </aside>
+                {gerandoRelatorio ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Gerando PDF...</>
+                ) : (
+                  <>Gerar relatorio (PDF) <ArrowRight className="w-4 h-4" /></>
+                )}
+              </button>
+            </div>
           </div>
+
         </div>
       </main>
 

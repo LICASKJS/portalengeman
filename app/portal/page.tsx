@@ -192,7 +192,7 @@ function addMonthsToDate(date: Date, months: number): Date {
 
 {/* Função da API utilizada no Back-end (Temporária) */}
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://backend-engeman-1.onrender.com'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 
 
 {/* Função carrega os dados automaticos do fornecedor ( Resumido com notas e feedbacks) */}

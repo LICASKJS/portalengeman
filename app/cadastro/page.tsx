@@ -23,7 +23,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 
-import axios from "axios"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 
@@ -232,7 +232,7 @@ const handleLoginSubmit = async (e: React.FormEvent) => {
   const { email, password } = loginData;
 
   if (!email || !password) {
-    showToast("Todos os campos são obrigatórios.", "warning");
+    showToast("Todos os campos sao obrigatorios.", "warning");
     return;
   }
 
@@ -241,17 +241,23 @@ const handleLoginSubmit = async (e: React.FormEvent) => {
     const response = await fetch(`${API_BASE}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),  
+      body: JSON.stringify({ email, password }),
     });
 
-    const data = await response.json();
+    const { json, text } = await parseJsonSafe(response);
 
-    if (response.ok) {
-      localStorage.setItem("access_token", data.access_token); 
-      window.location.href = "/portal"; 
-    } else {
-      showToast(data.message || "Credenciais inválidas!", "error");
+    if (!response.ok) {
+      showToast(extractMessage(json, text || "Credenciais invalidas!"), "error");
+      return;
     }
+
+    if (!json || typeof json.access_token !== "string" || !json.access_token.trim()) {
+      showToast("Resposta invalida do servidor.", "error");
+      return;
+    }
+
+    localStorage.setItem("access_token", json.access_token);
+    window.location.href = "/portal";
   } catch {
     showToast("Erro de rede ou servidor.", "error");
   } finally {
@@ -264,20 +270,20 @@ const handleSubmit = async (e) => {
   e.preventDefault();
   
   const { email, cnpj, nome, password, acceptTerms } = cadastroData;
-  console.log("Cadastro Data:", cadastroData);  
+  console.log("Cadastro Data:", cadastroData);
 
   if (!email || !cnpj || !nome || !password) {
-    showToast("Todos os campos são obrigatórios.", "warning");
+    showToast("Todos os campos sao obrigatorios.", "warning");
     return;
   }
 
   if (!validateCNPJ(cnpj)) {
-    showToast("CNPJ inválido.", "error");
+    showToast("CNPJ invalido.", "error");
     return;
   }
 
   if (!acceptTerms) {
-    showToast("Você deve aceitar os termos e condições.", "warning");
+    showToast("Voce deve aceitar os termos e condicoes.", "warning");
     return;
   }
 
@@ -293,24 +299,25 @@ const handleSubmit = async (e) => {
         email,
         cnpj,
         nome,
-        senha: password, 
-        acceptTerms,  
+        senha: password,
+        acceptTerms,
       }),
     });
 
-    const data = await response.json();
-
-    if (response.ok) {
-      if (data.access_token) {
-        localStorage.setItem("access_token", data.access_token);
-      }
-      showToast("Cadastro realizado com sucesso!", "success");
-      setTimeout(() => {
-        window.location.href = "/portal"; 
-      }, 1200);
-    } else {
-      showToast(data.message || "Erro no cadastro. Tente novamente.", "error");
+    const { json, text } = await parseJsonSafe(response);
+    if (!response.ok) {
+      showToast(extractMessage(json, text || "Erro no cadastro. Tente novamente."), "error");
+      return;
     }
+
+    if (json && typeof json.access_token === "string" && json.access_token.trim()) {
+      localStorage.setItem("access_token", json.access_token);
+    }
+
+    showToast("Cadastro realizado com sucesso!", "success");
+    setTimeout(() => {
+      window.location.href = "/portal";
+    }, 1200);
   } catch (error) {
     showToast("Erro de rede ou servidor.", "error");
   } finally {
@@ -907,3 +914,4 @@ console.log("Cadastro Data:", cadastroData);
     </div>
   )
 }
+

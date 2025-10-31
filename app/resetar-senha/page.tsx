@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 
 import Link from "next/link"
 import { Lock, Eye, EyeOff, CheckCircle, ArrowRight, Sun, Moon, Shield } from "lucide-react"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 export default function NewPassword() {
@@ -83,16 +84,17 @@ export default function NewPassword() {
         body: JSON.stringify({ token, nova_senha: password }),
       })
 
-      const data = await response.json()
+      const { json, text } = await parseJsonSafe(response)
 
-      if (response.ok) {
-        showToast("Senha redefinida com sucesso! Faça login.", "success")
-        setTimeout(() => {
-          window.location.href = "/entrar"
-        }, 1500)
-      } else {
-        showToast(data.message || "Erro ao redefinir senha", "error")
+      if (!response.ok) {
+        showToast(extractMessage(json, text || "Erro ao redefinir senha"), "error")
+        return
       }
+
+      showToast("Senha redefinida com sucesso! Faca login.", "success")
+      setTimeout(() => {
+        window.location.href = "/entrar"
+      }, 1500)
     } catch {
       showToast("Erro de rede ou servidor.", "error")
     } finally {
@@ -347,3 +349,4 @@ export default function NewPassword() {
     </div>
   )
 }
+

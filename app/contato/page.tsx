@@ -6,6 +6,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Mail, User, MessageSquare, Send, CheckCircle, ArrowRight, Sun, Moon, Phone, MapPin, Clock } from "lucide-react"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 
@@ -74,23 +75,29 @@ const handleSubmit = async (e: React.FormEvent) => {
     const response = await fetch(`${API_BASE}/api/contato`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData), 
+      body: JSON.stringify(formData),
     });
 
-    const data = await response.json();
+    const { json, text } = await parseJsonSafe(response);
 
-    if (response.ok) {
-      setShowModal(true);
-      setFormData({
-        nome: "",
-        email: "",
-        assunto: "",
-        mensagem: "",
-      });
-      showToast(data.message, "success");
-    } else {
-      showToast(data.message || "Erro ao enviar mensagem.", "error");
+    if (!response.ok) {
+      showToast(extractMessage(json, text || "Erro ao enviar mensagem."), "error");
+      return;
     }
+
+    if (!json || typeof json.message !== "string" || !json.message.trim()) {
+      showToast("Resposta invalida do servidor.", "error");
+      return;
+    }
+
+    setShowModal(true);
+    setFormData({
+      nome: "",
+      email: "",
+      assunto: "",
+      mensagem: "",
+    });
+    showToast(json.message, "success");
   } catch (err) {
     console.error("Erro ao enviar mensagem:", err);
     showToast("Erro de rede ou servidor.", "error");
@@ -408,3 +415,4 @@ const handleSubmit = async (e: React.FormEvent) => {
     </div>
   )
 }
+

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 
 import { Lock, CheckCircle, ArrowRight, Sun, Moon } from "lucide-react"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 import Link from "next/link"
 
@@ -56,16 +57,22 @@ export default function ValidarToken() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       })
-      const data = await response.json()
+      const { json, text } = await parseJsonSafe(response)
 
-      if (response.ok) {
-        showToast("Token válido! Redirecionando para redefinir senha...", "success")
-        setTimeout(() => {
-          window.location.href = `/resetar-senha?token=${token}`
-        }, 1500)
-      } else {
-        showToast(data.message || "Token inválido!", "error")
+      if (!response.ok) {
+        showToast(extractMessage(json, text || "Token invalido!"), "error")
+        return
       }
+
+      if (!json || typeof json.message !== "string" || !json.message.trim()) {
+        showToast("Resposta invalida do servidor.", "error")
+        return
+      }
+
+      showToast(json.message, "success")
+      setTimeout(() => {
+        window.location.href = `/resetar-senha?token=${token}`
+      }, 1500)
     } catch {
       showToast("Erro de rede ou servidor.", "error")
     } finally {
@@ -120,3 +127,4 @@ export default function ValidarToken() {
     </div>
   )
 }
+

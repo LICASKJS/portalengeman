@@ -33,6 +33,7 @@ import {
   X,
   Menu,
 } from "lucide-react"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 
 {/* Dados necessários para o portal do fornecedor*/}
@@ -374,20 +375,30 @@ async function enviarDocumentos(
       body: formData,
     })
 
-    const data = await response.json()
+    const { json, text } = await parseJsonSafe(response)
 
-    if (response.ok) {
-      return {
-        success: true,
-        message: data.message,
-        enviados: data.enviados,
-      }
-    } else {
+    if (!response.ok) {
       return {
         success: false,
-        message: data.message,
+        message: extractMessage(json, text || "Erro ao enviar documentos."),
         enviados: [],
       }
+    }
+
+    const enviados =
+      json && Array.isArray(json.enviados)
+        ? json.enviados.map((item) => `${item ?? ""}`.trim()).filter(Boolean)
+        : []
+
+    const message =
+      json && typeof json.message === "string" && json.message.trim()
+        ? json.message
+        : "Documentos enviados com sucesso."
+
+    return {
+      success: true,
+      message,
+      enviados,
     }
   } catch (error) {
     console.error("Erro ao enviar documentos:", error)
@@ -2070,11 +2081,4 @@ export default function PortalFornecedorPage() {
     </div>
   )
 }
-
-
-
-
-
-
-
 

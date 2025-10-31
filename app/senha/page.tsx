@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Mail, Lock, Shield, CheckCircle, ArrowRight, Sun, Moon } from "lucide-react"
+import { extractMessage, parseJsonSafe } from "../services/http-utils"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend-engeman-1.onrender.com"
 
@@ -62,15 +63,21 @@ const handleSubmit = async (e: React.FormEvent) => {
         body: JSON.stringify({ email }),
       })
 
-      const data = await response.json()
+      const { json, text } = await parseJsonSafe(response)
 
-      if (response.ok) {
-        showToast(data.message, "success")
-        setShowModal(true)
-        setEmail("") 
-      } else {
-        showToast(data.message || "Erro ao enviar token", "error")
+      if (!response.ok) {
+        showToast(extractMessage(json, text || "Erro ao enviar token"), "error")
+        return
       }
+
+      if (!json || typeof json.message !== "string" || !json.message.trim()) {
+        showToast("Resposta invalida do servidor.", "error")
+        return
+      }
+
+      showToast(json.message, "success")
+      setShowModal(true)
+      setEmail("")
     } catch (err) {
       showToast("Erro de rede ou servidor.", "error")
     } finally {
@@ -286,3 +293,4 @@ const handleSubmit = async (e: React.FormEvent) => {
     </div>
   )
 }
+
